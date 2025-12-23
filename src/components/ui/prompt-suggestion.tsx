@@ -25,8 +25,8 @@ function PromptSuggestion({
     return (
       <Button
         variant={variant || "outline"}
-        size={size || "lg"}
-        className={cn("rounded-full", className)}
+        size={size || "sm"}
+        className={cn("rounded-md", className)}
         {...props}
       >
         {children}
@@ -40,7 +40,7 @@ function PromptSuggestion({
         variant={variant || "ghost"}
         size={size || "sm"}
         className={cn(
-          "w-full cursor-pointer justify-start rounded-xl py-2",
+          "w-full cursor-pointer justify-start rounded-md py-1.5",
           "hover:bg-accent",
           className
         )}
@@ -61,7 +61,7 @@ function PromptSuggestion({
       variant={variant || "ghost"}
       size={size || "sm"}
       className={cn(
-        "w-full cursor-pointer justify-start gap-0 rounded-xl py-2",
+        "w-full cursor-pointer justify-start gap-0 rounded-md py-1.5",
         "hover:bg-accent",
         className
       )}
