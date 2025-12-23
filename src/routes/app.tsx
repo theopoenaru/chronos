@@ -5,10 +5,6 @@ import { AppContextProvider } from "@/lib/app-context";
 
 export const Route = createFileRoute("/app")({
   beforeLoad: async () => {
-    if (process.env.NODE_ENV === "development") {
-      return;
-    }
-    
     const session = await authClient.getSession();
     if (!session.data?.user) {
       throw redirect({
@@ -21,17 +17,10 @@ export const Route = createFileRoute("/app")({
 
 function AppLayout() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<{ user: { name?: string; image?: string } } | null>(
-    process.env.NODE_ENV === "development" 
-      ? { user: { name: "Dev User", image: undefined } }
-      : null
-  );
+  const [session, setSession] = useState<{ user: { name?: string; image?: string } } | null>(null);
 
   useEffect(() => {
     // Load session from auth client on mount
-    if (process.env.NODE_ENV === "development") {
-      return;
-    }
     authClient.getSession().then((result) => {
       if (result.data) {
         setSession({ user: { name: result.data.user.name, image: result.data.user.image || undefined } });

@@ -1,55 +1,71 @@
+import { toolDefinition } from "@tanstack/ai";
+import { z } from "zod";
 import type { CalendarEvent, TimeSlot } from "@/core/calendar/types";
 import { findAvailableSlots } from "@/core/calendar/availability";
 
-export const analyzeAvailabilityTool = {
+const calendarEventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  timezone: z.string(),
+  allDay: z.boolean(),
+});
+
+const inputSchema = z.object({
+  events: z.array(calendarEventSchema).describe("Array of calendar events"),
+  duration_minutes: z.number().describe("Required duration in minutes"),
+  time_min: z.string().describe("ISO 8601 datetime string for start of search window"),
+  time_max: z.string().describe("ISO 8601 datetime string for end of search window"),
+  timezone: z.string().describe("IANA timezone identifier"),
+});
+
+const outputSchema = z.object({
+  slots: z.array(
+    z.object({
+      start: z.string(),
+      end: z.string(),
+      score: z.number(),
+    })
+  ),
+});
+
+export const analyzeAvailabilityToolDefinition = toolDefinition({
   name: "analyze_availability",
   description: "Find available time slots that satisfy constraints",
-  parameters: {
-    type: "object",
-    properties: {
-      events: {
-        type: "array",
-        description: "Array of calendar events",
-      },
-      duration_minutes: {
-        type: "number",
-        description: "Required duration in minutes",
-      },
-      time_min: {
-        type: "string",
-        description: "ISO 8601 datetime string for start of search window",
-      },
-      time_max: {
-        type: "string",
-        description: "ISO 8601 datetime string for end of search window",
-      },
-      timezone: {
-        type: "string",
-        description: "IANA timezone identifier",
-      },
-    },
-    required: ["events", "duration_minutes", "time_min", "time_max", "timezone"],
-  },
-  execute: async (params: {
-    events: CalendarEvent[];
-    duration_minutes: number;
-    time_min: string;
-    time_max: string;
-    timezone: string;
-  }): Promise<{ slots: TimeSlot[] }> => {
-    // TODO: implement
-    // - Parse time range
-    // - Find available slots
-    // - Rank and return top candidates
+  inputSchema,
+  outputSchema,
+});
+
+export function createAnalyzeAvailabilityTool() {
+  return analyzeAvailabilityToolDefinition.server(async (params) => {
+    // Convert ISO strings back to Date objects
+    const events: CalendarEvent[] = params.events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      startTime: new Date(event.startTime),
+      endTime: new Date(event.endTime),
+      timezone: event.timezone,
+      allDay: event.allDay,
+    }));
+
     const timeMin = new Date(params.time_min);
     const timeMax = new Date(params.time_max);
+
     const slots = findAvailableSlots(
-      params.events,
+      events,
       params.duration_minutes,
       timeMin,
       timeMax,
     );
-    return { slots: slots.slice(0, 5) }; // Top 5
-  },
-};
 
+    // Return top 5 slots
+    return {
+      slots: slots.slice(0, 5).map((slot) => ({
+        start: slot.start.toISOString(),
+        end: slot.end.toISOString(),
+        score: slot.score,
+      })),
+    };
+  });
+}

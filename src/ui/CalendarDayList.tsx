@@ -46,7 +46,7 @@ export function CalendarDayList({
           {dayEvents.length} {dayEvents.length === 1 ? "event" : "events"} scheduled
         </p>
       </div>
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-2">
         {dayEvents.length === 0 ? (
           <Empty>
             <EmptyHeader>
@@ -57,22 +57,24 @@ export function CalendarDayList({
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {dayEvents.map((event, idx) => (
               <Card
                 key={event.id}
-                className="chronos-card event-card"
+                className="chronos-card event-card py-3 gap-2"
               >
                 <div
                   className={`absolute left-0 top-0 bottom-0 w-1 ${
                     EVENT_COLORS[idx % EVENT_COLORS.length]
                   }`}
                 />
-                <CardHeader className="pb-1.5 pl-3">
-                  <CardTitle className="text-sm font-medium">{event.title}</CardTitle>
+                <CardHeader className="px-3 pt-2 pb-0">
+                  <CardTitle className="text-sm font-medium leading-snug">
+                    {event.title}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="pl-3">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CardContent className="px-3 pb-2 pt-0">
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     <span>
                       {formatTime(event.startTime, timezone)} -{" "}

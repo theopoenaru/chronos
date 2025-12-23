@@ -32,11 +32,12 @@ export function App() {
   const [activeTab, setActiveTab] = useState<"history" | "chat" | "calendar">("chat");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(
     process.env.NODE_ENV === "development" ? "dev-session-1" : undefined
   );
   const [conversations] = useState<ConversationMeta[]>([]);
-  const [events] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const timezone = getUserTimezone();
   const chatPanelRef = useRef<ChatPanelRef>(null);
 
@@ -59,6 +60,43 @@ export function App() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    // If the image URL changes (new session/user), allow the avatar to try loading again
+    setAvatarLoadFailed(false);
+  }, [session?.user?.image]);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const timeMin = startOfDay.toISOString();
+      const timeMax = endOfDay.toISOString();
+
+      const response = await fetch(
+        `/api/calendar?time_min=${encodeURIComponent(timeMin)}&time_max=${encodeURIComponent(timeMax)}`
+      );
+
+      if (!response.ok) {
+        setEvents([]);
+        return;
+      }
+
+      const data = await response.json();
+      const eventsWithDates = (data.events || []).map((event: Omit<CalendarEvent, 'startTime' | 'endTime'> & { startTime: string; endTime: string }) => ({
+        ...event,
+        startTime: new Date(event.startTime),
+        endTime: new Date(event.endTime),
+      }));
+      setEvents(eventsWithDates);
+    };
+
+    fetchEvents();
+  }, [selectedDate]);
 
   const handleCreateConversation = async () => {
     if (process.env.NODE_ENV === "development") {
@@ -139,21 +177,30 @@ export function App() {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 h-auto px-2 py-1.5 rounded-md">
-              {session?.user?.image ? (
+            <button
+              type="button"
+              className="flex items-center gap-2 h-auto px-2 py-1.5 rounded-md min-w-0 hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] transition-all"
+            >
+              {session?.user?.image && !avatarLoadFailed ? (
                 <img
                   src={session.user.image}
-                  alt={session.user.name || "User"}
-                  className="h-7 w-7 rounded-md"
+                  alt=""
+                  className="h-7 w-7 rounded-md object-cover flex-shrink-0"
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarLoadFailed(true)}
                 />
               ) : (
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted">
-                  <User className="h-4 w-4" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted flex-shrink-0">
+                  <User className="h-4 w-4 text-muted-foreground" />
                 </div>
               )}
-              {session?.user?.name && <span className="text-sm hidden md:inline">{session.user.name}</span>}
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
+              {session?.user?.name && (
+                <span className="text-sm font-medium hidden md:inline truncate max-w-[120px] min-w-0">
+                  {session.user.name}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>
@@ -217,7 +264,12 @@ export function App() {
             </div>
             <div className="flex flex-1 flex-col overflow-hidden">
             {selectedSessionId ? (
-              <ChatPanel ref={chatPanelRef} sessionId={selectedSessionId} />
+              <ChatPanel
+                ref={chatPanelRef}
+                sessionId={selectedSessionId}
+                selectedDate={selectedDate}
+                timezone={timezone}
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6 text-center">
                   <Empty>
@@ -274,7 +326,12 @@ export function App() {
           </div>
           <div className="flex flex-1 flex-col overflow-hidden">
             {selectedSessionId ? (
-              <ChatPanel ref={chatPanelRef} sessionId={selectedSessionId} />
+              <ChatPanel
+                ref={chatPanelRef}
+                sessionId={selectedSessionId}
+                selectedDate={selectedDate}
+                timezone={timezone}
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center">
                 <Empty>

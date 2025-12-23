@@ -1,4 +1,4 @@
-import { useState, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef } from "react";
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
 import {
   ChatContainerRoot,
@@ -21,6 +21,8 @@ import type { ToolPart } from "@/components/ui/tool";
 
 type ChatPanelProps = {
   sessionId: string;
+  selectedDate: Date;
+  timezone: string;
 };
 
 export type ChatPanelRef = {
@@ -53,11 +55,40 @@ function ChatPanelInput({ ref, setInput }: { ref: React.Ref<ChatPanelRef>; setIn
 }
 
 export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
-  ({ sessionId }, ref) => {
+  ({ sessionId, selectedDate, timezone }, ref) => {
     const [input, setInput] = useState("");
 
+    const selectedDateYmd = useMemo(() => {
+      // Format as YYYY-MM-DD in the user's timezone (stable, unambiguous for the model).
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(selectedDate);
+    }, [selectedDate, timezone]);
+
+    const selectedDateYmdRef = useRef(selectedDateYmd);
+    const timezoneRef = useRef(timezone);
+
+    useEffect(() => {
+      selectedDateYmdRef.current = selectedDateYmd;
+    }, [selectedDateYmd]);
+
+    useEffect(() => {
+      timezoneRef.current = timezone;
+    }, [timezone]);
+
     const { messages, sendMessage, isLoading } = useChat({
-      connection: fetchServerSentEvents(`/api/chat?sessionId=${sessionId}`),
+      connection: fetchServerSentEvents(
+        `/api/chat?sessionId=${sessionId}`,
+        () => ({
+          body: {
+            selectedDate: selectedDateYmdRef.current,
+            timezone: timezoneRef.current,
+          },
+        }),
+      ),
     });
 
     const handleSubmit = (e?: React.FormEvent) => {
@@ -110,6 +141,63 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                     message.role === "assistant" ? "text-left" : "text-right"
                   }`}
                 >
+                  {/* Tools should appear before the assistant response */}
+                  {message.role === "assistant" &&
+                    message.parts
+                      ?.filter((part) => part.type === "tool-call")
+                      .map((part, idx) => {
+                        const safeJsonParse = (value: string): unknown => {
+                          try {
+                            return JSON.parse(value);
+                          } catch {
+                            return value;
+                          }
+                        };
+
+                        // Find the matching tool-result part (server tools emit tool_result chunks,
+                        // which become tool-result parts; tool-call.output is only populated for client tools).
+                        const toolResult = (message.parts ?? []).find(
+                          (p): p is { type: "tool-result"; toolCallId: string; content: string; state: "complete" | "error"; error?: string } =>
+                            p.type === "tool-result" && p.toolCallId === part.id
+                        );
+
+                        const inputObj = safeJsonParse(part.arguments);
+
+                        const resultObj = toolResult
+                          ? safeJsonParse(toolResult.content)
+                          : undefined;
+
+                        const outputObj =
+                          typeof resultObj === "object" && resultObj !== null
+                            ? (resultObj as Record<string, unknown>)
+                            : toolResult
+                              ? { output: resultObj }
+                              : undefined;
+
+                        const errorText = toolResult?.state === "error" ? toolResult.error : undefined;
+
+                        const toolPart: ToolPart = {
+                          type: part.name,
+                          state: errorText
+                            ? "output-error"
+                            : outputObj
+                              ? "output-available"
+                              : part.state === "input-complete" || part.state === "approval-requested"
+                                ? "input-available"
+                                : "input-streaming",
+                          input:
+                            typeof inputObj === "object" && inputObj !== null
+                              ? (inputObj as Record<string, unknown>)
+                              : { arguments: inputObj },
+                          output: outputObj,
+                          toolCallId: part.id,
+                          errorText,
+                        };
+
+                        return <Tool key={idx} toolPart={toolPart} />;
+                      })}
+
+                  {/* Message bubble (after tools for assistant) */}
                   <div
                     className={cn(
                       "inline-block max-w-[85%] md:max-w-[80%] rounded-lg px-3 py-2 md:px-4 md:py-2.5",
@@ -125,24 +213,6 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                         .join("") || ""}
                     </div>
                   </div>
-                  {message.parts
-                    ?.filter((part) => part.type === "tool-call" || part.type === "tool-result")
-                    .map((part, idx) => {
-                      const toolPart: ToolPart = {
-                        type: part.toolName || part.name || "unknown",
-                        state:
-                          part.state === "result" || part.type === "tool-result"
-                            ? "output-available"
-                            : part.error
-                              ? "output-error"
-                              : "input-streaming",
-                        input: part.input as Record<string, unknown>,
-                        output: (part.result || part.output) as Record<string, unknown>,
-                        toolCallId: part.toolCallId || part.id,
-                        errorText: part.error as string,
-                      };
-                      return <Tool key={idx} toolPart={toolPart} />;
-                    })}
                 </div>
               ))
             )}

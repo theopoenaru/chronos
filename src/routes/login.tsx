@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -9,13 +9,11 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     // Redirect to app if already authenticated
-    if (process.env.NODE_ENV === "development") {
-      return;
-    }
-    
     authClient.getSession().then((session) => {
       if (session.data?.user) {
         navigate({ to: "/app" });
@@ -24,15 +22,22 @@ function LoginPage() {
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
-    if (process.env.NODE_ENV === "development") {
-      navigate({ to: "/app" });
-      return;
-    }
+    setError(null);
+    setIsLoading(true);
     
-    await authClient.signIn.social({
-      provider: "google",
-      callbackURL: "/app",
-    });
+    try {
+      await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/app",
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to sign in with Google. Please try again."
+      );
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -57,8 +62,14 @@ function LoginPage() {
         </div>
 
         <div className="chronos-card p-6 space-y-4">
+          {error && (
+            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
+              {error}
+            </div>
+          )}
           <Button
             onClick={handleGoogleSignIn}
+            disabled={isLoading}
             className="w-full h-11 rounded-md text-sm font-medium"
             size="lg"
             variant="outline"

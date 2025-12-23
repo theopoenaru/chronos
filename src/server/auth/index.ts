@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "../db";
+import * as schema from "../schema";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -15,6 +16,7 @@ if (isProduction && !process.env.BETTER_AUTH_URL) {
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
+    schema,
   }),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "dev-secret",

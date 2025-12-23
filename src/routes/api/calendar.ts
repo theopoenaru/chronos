@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireSession } from "@/server/auth/session";
-import { getCalendarEvents } from "@/server/db/queries";
+import { fetchCalendarEvents } from "@/server/google/calendarClient";
+import { normalizeGoogleEvents } from "@/server/google/normalize";
 
 export const Route = createFileRoute("/api/calendar")({
   server: {
@@ -18,13 +19,21 @@ export const Route = createFileRoute("/api/calendar")({
           );
         }
 
-        const events = await getCalendarEvents(
+        const googleEvents = await fetchCalendarEvents(
           session.user.id,
           new Date(timeMin),
           new Date(timeMax),
         );
 
-        return new Response(JSON.stringify({ events }), {
+        const events = normalizeGoogleEvents(googleEvents);
+
+        const serializedEvents = events.map((event) => ({
+          ...event,
+          startTime: event.startTime.toISOString(),
+          endTime: event.endTime.toISOString(),
+        }));
+
+        return new Response(JSON.stringify({ events: serializedEvents }), {
           headers: { "Content-Type": "application/json" },
         });
       },

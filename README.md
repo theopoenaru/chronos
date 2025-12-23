@@ -25,11 +25,12 @@ Required variables:
 
 3. Generate and run migrations:
 ```bash
-npm run auth:generate
-npm run db:generate
-npm run db:migrate
-npm run auth:migrate
+npm run auth:generate  # Generate better-auth schema files
+npm run db:generate     # Generate Drizzle migrations (includes better-auth tables)
+npm run db:migrate      # Apply migrations to database
 ```
+
+Note: For Drizzle, `auth:generate` creates the schema files that need to be imported into your main schema. Then use Drizzle's migration tools to apply them.
 
 4. Start dev server:
 ```bash
