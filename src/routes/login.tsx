@@ -1,25 +1,29 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, useSearch } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
+  validateSearch: z.object({
+    reauth: z.boolean().optional(),
+  }),
 });
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { reauth } = useSearch({ from: "/login" });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Redirect to app if already authenticated
     authClient.getSession().then((session) => {
-      if (session.data?.user) {
+      if (session.data?.user && !reauth) {
         navigate({ to: "/app" });
       }
     });
-  }, [navigate]);
+  }, [navigate, reauth]);
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -95,14 +99,15 @@ function LoginPage() {
             Continue with Google
           </Button>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            By continuing, you agree to our Terms of Service and Privacy Policy.
-            Chronos securely connects to your Google Calendar.
+            By continuing, you agree to our Terms of Service and{" "}
+            <Link
+              to={"/privacy"}
+              className="underline hover:text-foreground transition-colors"
+            >
+              Privacy Policy
+            </Link>
+            . Chronos securely connects to your Google Calendar.
           </p>
-        </div>
-
-        <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
-          <span>Read-only access to your calendar</span>
         </div>
       </div>
     </div>

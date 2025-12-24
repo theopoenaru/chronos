@@ -1,3 +1,9 @@
+export type CalendarEventAttendee = {
+  email: string;
+  displayName?: string;
+  responseStatus?: "needsAction" | "declined" | "tentative" | "accepted";
+};
+
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -5,17 +11,10 @@ export type CalendarEvent = {
   endTime: Date;
   timezone: string;
   allDay: boolean;
-};
-
-export type TimeSlot = {
-  start: Date;
-  end: Date;
-  score: number; // ranking for recommendations
-};
-
-export type FreeBusyBlock = {
-  start: Date;
-  end: Date;
-  busy: boolean;
+  attendees?: CalendarEventAttendee[];
+  location?: string;
+  description?: string;
+  colorId?: string;
+  calendarId?: string;
 };
 

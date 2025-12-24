@@ -19,23 +19,31 @@ export const Route = createFileRoute("/api/calendar")({
           );
         }
 
-        const googleEvents = await fetchCalendarEvents(
-          session.user.id,
-          new Date(timeMin),
-          new Date(timeMax),
-        );
+        try {
+          const events = await fetchCalendarEvents(
+            session.user.id,
+            new Date(timeMin),
+            new Date(timeMax),
+          );
 
-        const events = normalizeGoogleEvents(googleEvents);
-
-        const serializedEvents = events.map((event) => ({
-          ...event,
-          startTime: event.startTime.toISOString(),
-          endTime: event.endTime.toISOString(),
-        }));
-
-        return new Response(JSON.stringify({ events: serializedEvents }), {
-          headers: { "Content-Type": "application/json" },
-        });
+          return new Response(JSON.stringify({ 
+            events: normalizeGoogleEvents(events).map((event) => ({
+              ...event,
+              startTime: event.startTime.toISOString(),
+              endTime: event.endTime.toISOString(),
+            }))
+          }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (error: any) {
+          if (error.code === "OAUTH_TOKEN_INVALID") {
+            return new Response(
+              JSON.stringify({ error: "OAUTH_TOKEN_INVALID", message: "Google OAuth token invalid. Please re-authenticate." }),
+              { status: 401, headers: { "Content-Type": "application/json" } }
+            );
+          }
+          throw error;
+        }
       },
     },
   },

@@ -66,3 +66,8 @@ npm run build
 npm run preview
 ```
 
+6. Run database migrations:
+   - Option A: Create a one-off "migrate" job in Render dashboard with command: `npm run db:migrate`
+   - Option B: Run migrations manually via Render shell: `npm run db:migrate`
+   - Note: Migrations should run in the runtime environment, not during build
+

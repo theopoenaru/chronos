@@ -23,6 +23,8 @@ type ChatPanelProps = {
   sessionId: string;
   selectedDate: Date;
   timezone: string;
+  initialMessages?: any[];
+  onMessageSent?: () => void;
 };
 
 export type ChatPanelRef = {
@@ -55,11 +57,16 @@ function ChatPanelInput({ ref, setInput }: { ref: React.Ref<ChatPanelRef>; setIn
 }
 
 export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
-  ({ sessionId, selectedDate, timezone }, ref) => {
+  ({ sessionId, selectedDate, timezone, initialMessages = [], onMessageSent }, ref) => {
     const [input, setInput] = useState("");
+    const internalRef = useRef<ChatPanelRef>(null);
+
+    useImperativeHandle(ref, () => ({
+      focusInput: () => internalRef.current?.focusInput(),
+      setInput: (value: string) => internalRef.current?.setInput(value),
+    }));
 
     const selectedDateYmd = useMemo(() => {
-      // Format as YYYY-MM-DD in the user's timezone (stable, unambiguous for the model).
       return new Intl.DateTimeFormat("en-CA", {
         timeZone: timezone,
         year: "numeric",
@@ -80,6 +87,7 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
     }, [timezone]);
 
     const { messages, sendMessage, isLoading } = useChat({
+      initialMessages,
       connection: fetchServerSentEvents(
         `/api/chat?sessionId=${sessionId}`,
         () => ({
@@ -91,22 +99,27 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       ),
     });
 
+    const isStreaming = isLoading && messages.length > 0 && messages[messages.length - 1]?.role === "assistant";
+
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault();
       if (input.trim() && !isLoading) {
         sendMessage(input);
         setInput("");
+        setTimeout(() => {
+          onMessageSent?.();
+        }, 1500);
       }
     };
 
     const handleSuggestionClick = (suggestion: string) => {
-      setInput(suggestion);
+      internalRef.current?.setInput(suggestion);
     };
 
     return (
       <>
         <ChatContainerRoot className="flex-1 overflow-y-auto">
-          <ChatContainerContent className="p-4 md:p-6">
+          <ChatContainerContent className="p-4 md:p-6 pb-6 gap-3">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-full gap-6">
                 <Empty>
@@ -134,14 +147,27 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 </div>
               </div>
             ) : (
-              messages.map((message) => (
+              <>
+                {messages.map((message, msgIndex) => {
+                  const isLastMessage = msgIndex === messages.length - 1;
+                  const isStreamingMessage = isLastMessage && isStreaming && message.role === "assistant";
+                  const textContent = message.parts
+                    ?.filter((p) => p.type === "text")
+                    .map((p) => p.content)
+                    .join("") || "";
+                  const hasContent = textContent.trim().length > 0 ||
+                    message.parts?.some((p) => p.type === "tool-call" || p.type === "tool-result");
+
+                  return (
                 <div
                   key={message.id}
-                  className={`mb-6 message-bubble ${
+                  className={`message-bubble ${
                     message.role === "assistant" ? "text-left" : "text-right"
                   }`}
+                  style={{
+                    animation: "fadeIn 0.3s ease-in-out",
+                  }}
                 >
-                  {/* Tools should appear before the assistant response */}
                   {message.role === "assistant" &&
                     message.parts
                       ?.filter((part) => part.type === "tool-call")
@@ -161,7 +187,9 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                             p.type === "tool-result" && p.toolCallId === part.id
                         );
 
-                        const inputObj = safeJsonParse(part.arguments);
+                        const inputObj = part.arguments 
+                          ? safeJsonParse(part.arguments)
+                          : undefined;
 
                         const resultObj = toolResult
                           ? safeJsonParse(toolResult.content)
@@ -186,35 +214,57 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                                 ? "input-available"
                                 : "input-streaming",
                           input:
-                            typeof inputObj === "object" && inputObj !== null
+                            inputObj && typeof inputObj === "object" && inputObj !== null
                               ? (inputObj as Record<string, unknown>)
-                              : { arguments: inputObj },
+                              : inputObj !== undefined
+                                ? { value: inputObj }
+                                : undefined,
                           output: outputObj,
                           toolCallId: part.id,
                           errorText,
                         };
 
-                        return <Tool key={idx} toolPart={toolPart} />;
+                        return (
+                          <div key={idx}>
+                            <Tool toolPart={toolPart} className="mt-0 mb-3" />
+                          </div>
+                        );
                       })}
 
-                  {/* Message bubble (after tools for assistant) */}
-                  <div
-                    className={cn(
-                      "inline-block max-w-[85%] md:max-w-[80%] rounded-lg px-3 py-2 md:px-4 md:py-2.5",
-                      message.role === "assistant"
-                        ? "bg-muted text-foreground"
-                        : "bg-primary text-primary-foreground"
-                    )}
-                  >
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                      {message.parts
-                        ?.filter((p) => p.type === "text")
-                        .map((p) => p.content)
-                        .join("") || ""}
+                      {(hasContent || message.role === "user") && (
+                        <div
+                          className={cn(
+                            "inline-block max-w-[85%] md:max-w-[80%] rounded-lg px-3 py-2 md:px-4 md:py-2.5",
+                            message.role === "assistant"
+                              ? "bg-muted text-foreground"
+                              : "bg-primary text-primary-foreground",
+                          )}
+                        >
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                            {textContent}
+                            {isStreamingMessage && (
+                              <span className="inline-block ml-0.5 w-1.5 h-4 bg-foreground/70 animate-pulse" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {!hasContent && message.role === "assistant" && isStreamingMessage && (
+                        <div className="inline-block max-w-[85%] md:max-w-[80%] rounded-lg px-3 py-2 md:px-4 md:py-2.5 bg-muted text-foreground">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex gap-1">
+                              <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                              <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                              <span className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                            </div>
+                            <span>Thinking...</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-              ))
+                  );
+                })}
+              </>
             )}
             <ChatContainerScrollAnchor />
           </ChatContainerContent>
@@ -230,7 +280,7 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
                 isLoading={isLoading}
                 disabled={isLoading}
               >
-                <ChatPanelInput ref={ref} setInput={setInput} />
+                <ChatPanelInput ref={internalRef} setInput={setInput} />
                 <PromptInputTextarea 
                   placeholder="Ask about your schedule..." 
                   className="pr-12 text-sm min-h-[44px] rounded-lg resize-none text-foreground" 

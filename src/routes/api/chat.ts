@@ -4,6 +4,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireSession } from "@/server/auth/session";
 import { SYSTEM_PROMPT } from "@/server/llm/systemPrompt";
 import { createServerTools } from "@/server/tools";
+import { addChatMessage, updateChatSession } from "@/server/db/queries";
+import { db } from "@/server/db";
+import { chatSession } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -39,6 +43,34 @@ export const Route = createFileRoute("/api/chat")({
         };
         const finalConversationId = conversationId || data?.conversationId || undefined;
 
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage?.role === "user") {
+          const parts = lastMessage.parts || [];
+          const textPart = parts.find((p: any) => p.type === "text");
+          const textContent = textPart?.content || lastMessage.content || "";
+          const messageParts = parts.length > 0 ? parts : [{ type: "text", content: textContent }];
+          
+          const messageId = lastMessage.id || crypto.randomUUID();
+          
+          const existingSession = await db.select().from(chatSession).where(eq(chatSession.id, sessionId)).limit(1);
+          if (existingSession.length === 0) {
+            await db.insert(chatSession).values({
+              id: sessionId,
+              userId,
+              title: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          }
+          
+          await addChatMessage(messageId, sessionId, "user", messageParts);
+
+          if (messages.length === 1 && textContent) {
+            const title = textContent.trim().slice(0, 100);
+            if (title) await updateChatSession(sessionId, title);
+          }
+        }
+
         const tools = createServerTools(userId);
 
         const allowedModels = [
@@ -58,12 +90,32 @@ export const Route = createFileRoute("/api/chat")({
           envModel && (allowedModels as readonly string[]).includes(envModel)
             ? (envModel as AllowedModel)
             : "gemini-2.5-flash";
-        const calendarContextPrompt =
-          selectedDate && timezone
-            ? `CALENDAR_CONTEXT\n- SelectedDate: ${selectedDate}\n- Timezone: ${timezone}\nInterpret relative dates (today/tomorrow) relative to SelectedDate unless the user specifies otherwise.`
-            : selectedDate
-              ? `CALENDAR_CONTEXT\n- SelectedDate: ${selectedDate}\nInterpret relative dates (today/tomorrow) relative to SelectedDate unless the user specifies otherwise.`
-              : undefined;
+        const userName = session.user.name || "User";
+        
+        let today: string;
+        if (timezone) {
+          const now = new Date();
+          const formatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+          today = formatter.format(now);
+        } else {
+          today = new Date().toISOString().split('T')[0];
+        }
+        
+        const contextParts = [
+          `Today: ${today}`,
+          selectedDate ? `Selected Date: ${selectedDate}` : null,
+          timezone ? `Timezone: ${timezone}` : null,
+          `User: ${userName}`,
+        ].filter(Boolean);
+        
+        const calendarContextPrompt = contextParts.length > 0
+          ? `CONTEXT\n${contextParts.join('\n')}`
+          : undefined;
 
         const stream = chat({
           adapter: geminiText(model, {
@@ -77,8 +129,51 @@ export const Route = createFileRoute("/api/chat")({
           conversationId: finalConversationId || sessionId,
         });
 
+        let assistantMessageId: string | undefined;
+        const assistantMessageParts: any[] = [];
+
+        const wrappedStream = (async function* () {
+          for await (const chunk of stream) {
+            if (chunk.type === "content" && chunk.content) {
+              if (!assistantMessageId) {
+                assistantMessageId = crypto.randomUUID();
+              }
+              assistantMessageParts.push({ type: "text", content: chunk.content });
+            } else if (chunk.type === "tool_call") {
+              if (!assistantMessageId) {
+                assistantMessageId = crypto.randomUUID();
+              }
+              const toolCall = chunk.toolCall;
+              assistantMessageParts.push({
+                type: "tool-call",
+                id: toolCall.id,
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments,
+                state: "input-complete",
+              });
+            } else if (chunk.type === "tool_result") {
+              assistantMessageParts.push({
+                type: "tool-result",
+                toolCallId: chunk.toolCallId,
+                content: chunk.content,
+                state: "complete",
+              });
+            }
+            yield chunk;
+          }
+
+          if (assistantMessageId && assistantMessageParts.length > 0) {
+            await addChatMessage(
+              assistantMessageId,
+              sessionId,
+              "assistant",
+              assistantMessageParts
+            );
+          }
+        })();
+
         const abortController = new AbortController();
-        const readableStream = toServerSentEventsStream(stream, abortController);
+        const readableStream = toServerSentEventsStream(wrappedStream, abortController);
         
         return new Response(readableStream, {
           headers: {

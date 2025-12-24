@@ -1,20 +1,6 @@
 import { db } from "../db.ts";
-import { calendarEvent, chatSession, chatMessage } from "./schema";
-import { eq, desc, sql } from "drizzle-orm";
-
-export async function getCalendarEvents(
-  userId: string,
-  timeMin: Date,
-  timeMax: Date,
-) {
-  return db
-    .select()
-    .from(calendarEvent)
-    .where(
-      sql`${calendarEvent.userId} = ${userId} AND ${calendarEvent.startTime} >= ${timeMin} AND ${calendarEvent.startTime} <= ${timeMax}`,
-    )
-    .orderBy(calendarEvent.startTime);
-}
+import { chatSession, chatMessage } from "./schema";
+import { eq, desc } from "drizzle-orm";
 
 export async function getChatSessions(userId: string) {
   return db
@@ -25,11 +11,18 @@ export async function getChatSessions(userId: string) {
 }
 
 export async function getChatMessages(sessionId: string) {
-  return db
+  const messages = await db
     .select()
     .from(chatMessage)
     .where(eq(chatMessage.sessionId, sessionId))
     .orderBy(chatMessage.createdAt);
+  
+  return messages.map((msg) => ({
+    id: msg.id,
+    role: msg.role as "user" | "assistant",
+    parts: typeof msg.parts === "string" ? JSON.parse(msg.parts) : msg.parts,
+    createdAt: msg.createdAt,
+  }));
 }
 
 export async function createChatSession(userId: string, title?: string) {
@@ -46,18 +39,23 @@ export async function createChatSession(userId: string, title?: string) {
 }
 
 export async function addChatMessage(
+  id: string,
   sessionId: string,
   role: "user" | "assistant",
-  content: string,
-  toolSteps?: unknown,
+  parts: unknown[],
 ) {
   await db.insert(chatMessage).values({
+    id,
     sessionId,
     role,
-    content,
-    toolSteps: toolSteps ? JSON.stringify(toolSteps) : null,
+    parts: JSON.stringify(parts),
     createdAt: new Date(),
   });
+  
+  await db
+    .update(chatSession)
+    .set({ updatedAt: new Date() })
+    .where(eq(chatSession.id, sessionId));
 }
 
 export async function updateChatSession(sessionId: string, title: string) {

@@ -9,14 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiCalendarRouteImport } from './routes/api/calendar'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth.$'
 
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -36,6 +43,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiSessionsRoute = ApiSessionsRouteImport.update({
+  id: '/api/sessions',
+  path: '/api/sessions',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
@@ -57,16 +69,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/api/calendar': typeof ApiCalendarRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/api/calendar': typeof ApiCalendarRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/app': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -75,8 +91,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/api/calendar': typeof ApiCalendarRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/sessions': typeof ApiSessionsRoute
   '/app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -86,19 +104,31 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/login'
+    | '/privacy'
     | '/api/calendar'
     | '/api/chat'
+    | '/api/sessions'
     | '/app/'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/api/calendar' | '/api/chat' | '/app' | '/api/auth/$'
+  to:
+    | '/'
+    | '/login'
+    | '/privacy'
+    | '/api/calendar'
+    | '/api/chat'
+    | '/api/sessions'
+    | '/app'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/login'
+    | '/privacy'
     | '/api/calendar'
     | '/api/chat'
+    | '/api/sessions'
     | '/app/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
@@ -107,13 +137,22 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   ApiCalendarRoute: typeof ApiCalendarRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiSessionsRoute: typeof ApiSessionsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -141,6 +180,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/sessions': {
+      id: '/api/sessions'
+      path: '/api/sessions'
+      fullPath: '/api/sessions'
+      preLoaderRoute: typeof ApiSessionsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
       id: '/api/chat'
@@ -180,8 +226,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   ApiCalendarRoute: ApiCalendarRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiSessionsRoute: ApiSessionsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

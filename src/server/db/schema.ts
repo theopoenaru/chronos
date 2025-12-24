@@ -26,15 +26,13 @@ export const chatSession = pgTable("chat_session", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Chat messages
 export const chatMessage = pgTable("chat_message", {
-  id: serial("id").primaryKey(),
+  id: text("id").primaryKey(),
   sessionId: text("session_id")
     .notNull()
     .references(() => chatSession.id, { onDelete: "cascade" }),
-  role: text("role").notNull(), // 'user' | 'assistant'
-  content: text("content").notNull(),
-  toolSteps: jsonb("tool_steps"), // ToolStep[]
+  role: text("role").notNull(),
+  parts: jsonb("parts").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

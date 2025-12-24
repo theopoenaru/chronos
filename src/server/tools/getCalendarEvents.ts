@@ -1,13 +1,20 @@
 import { toolDefinition } from "@tanstack/ai";
 import { z } from "zod";
-import { getCalendarEvents as getCachedEvents } from "@/server/db/queries";
 import { fetchCalendarEvents } from "@/server/google/calendarClient";
 import { normalizeGoogleEvents } from "@/server/google/normalize";
 
 const inputSchema = z.object({
-  time_min: z.string().describe("ISO 8601 datetime string for start of range"),
-  time_max: z.string().describe("ISO 8601 datetime string for end of range"),
-  timezone: z.string().describe("IANA timezone identifier (e.g., 'America/New_York')"),
+  calendarId: z.string().default("primary").describe("Calendar ID to query"),
+  timeMin: z.string().describe("ISO 8601 datetime string for start of range"),
+  timeMax: z.string().describe("ISO 8601 datetime string for end of range"),
+  query: z.string().optional().describe("Optional search query to filter events by title"),
+  maxResults: z.number().int().min(1).max(50).default(50).describe("Maximum number of events to return"),
+});
+
+const attendeeSchema = z.object({
+  email: z.string(),
+  displayName: z.string().optional(),
+  responseStatus: z.enum(["needsAction", "declined", "tentative", "accepted"]).optional(),
 });
 
 const outputSchema = z.object({
@@ -19,47 +26,36 @@ const outputSchema = z.object({
       endTime: z.string(),
       timezone: z.string(),
       allDay: z.boolean(),
+      attendees: z.array(attendeeSchema).optional(),
+      location: z.string().optional(),
+      description: z.string().optional(),
+      colorId: z.string().optional(),
+      calendarId: z.string().optional(),
     })
   ),
 });
 
-export const getCalendarEventsToolDefinition = toolDefinition({
-  name: "get_calendar_events",
-  description: "Fetch calendar events for a time range",
+export const calendarListEventsToolDefinition = toolDefinition({
+  name: "calendar_list_events",
+  description: "List calendar events in a time window. Use for counting meetings, summaries, or finding candidates.",
   inputSchema,
   outputSchema,
 });
 
-export function createGetCalendarEventsTool(userId: string) {
-  return getCalendarEventsToolDefinition.server(async (params) => {
-    const timeMin = new Date(params.time_min);
-    const timeMax = new Date(params.time_max);
-
-    const cached = await getCachedEvents(userId, timeMin, timeMax);
-    if (cached.length > 0) {
-      return {
-        events: cached.map((event) => ({
-          id: event.id,
-          title: event.title ?? "(No title)",
-          startTime: event.startTime.toISOString(),
-          endTime: event.endTime.toISOString(),
-          timezone: event.timezone ?? params.timezone ?? "UTC",
-          allDay: event.allDay ?? false,
-        })),
-      };
-    }
-
-    const googleEvents = await fetchCalendarEvents(userId, timeMin, timeMax);
-    const normalizedEvents = normalizeGoogleEvents(googleEvents);
+export function createCalendarListEventsTool(userId: string) {
+  return calendarListEventsToolDefinition.server(async (params) => {
+    const events = await fetchCalendarEvents(
+      userId,
+      new Date(params.timeMin),
+      new Date(params.timeMax),
+      { calendarId: params.calendarId, query: params.query, maxResults: params.maxResults }
+    );
 
     return {
-      events: normalizedEvents.map((event) => ({
-        id: event.id,
-        title: event.title,
+      events: normalizeGoogleEvents(events).map((event) => ({
+        ...event,
         startTime: event.startTime.toISOString(),
         endTime: event.endTime.toISOString(),
-        timezone: event.timezone,
-        allDay: event.allDay,
       })),
     };
   });

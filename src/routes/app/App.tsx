@@ -3,7 +3,6 @@ import { ConversationList } from "@/ui/ConversationList";
 import { ChatPanel, type ChatPanelRef } from "@/ui/ChatPanel";
 import { CalendarDayList } from "@/ui/CalendarDayList";
 import { MiniCalendar } from "@/ui/MiniCalendar";
-import { InsightCards } from "@/ui/InsightCards";
 import { getUserTimezone } from "@/core/time/timezone";
 import { authClient } from "@/lib/auth-client";
 import type { ConversationMeta } from "@/core/chat/types";
@@ -36,7 +35,8 @@ export function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(
     process.env.NODE_ENV === "development" ? "dev-session-1" : undefined
   );
-  const [conversations] = useState<ConversationMeta[]>([]);
+  const [conversations, setConversations] = useState<ConversationMeta[]>([]);
+  const [initialMessages, setInitialMessages] = useState<any[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const timezone = getUserTimezone();
   const chatPanelRef = useRef<ChatPanelRef>(null);
@@ -46,23 +46,40 @@ export function App() {
     setIsMobileMenuOpen(false);
   };
 
-  useEffect(() => {
-    // Synchronize with backend for chat sessions
-    if (process.env.NODE_ENV === "development") {
-      return;
-    }
-    
-    authClient.getSession().then(async (result) => {
-      if (result.data?.user?.id) {
-        // TODO: Replace with actual API call
-        // const convs = await getChatSessions(result.data.user.id);
-        // setConversations(convs);
+  const fetchSessions = async () => {
+    try {
+      const response = await fetch("/api/sessions");
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.sessions) {
+          setConversations(
+            data.sessions.map((s: any) => ({
+              id: s.id,
+              title: s.title,
+              updatedAt: new Date(s.updatedAt),
+            }))
+          );
+        }
       }
-    });
+    } catch (error) {
+      console.error("Failed to fetch sessions:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions();
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchSessions();
+      }
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   useEffect(() => {
-    // If the image URL changes (new session/user), allow the avatar to try loading again
     setAvatarLoadFailed(false);
   }, [session?.user?.image]);
 
@@ -82,6 +99,14 @@ export function App() {
       );
 
       if (!response.ok) {
+        if (response.status === 401) {
+          const data = await response.json().catch(() => ({}));
+          if (data.error === "OAUTH_TOKEN_INVALID") {
+            await authClient.signOut();
+            window.location.href = "/login?reauth=true";
+            return;
+          }
+        }
         setEvents([]);
         return;
       }
@@ -101,19 +126,59 @@ export function App() {
   const handleCreateConversation = async () => {
     if (process.env.NODE_ENV === "development") {
       const newId = `dev-session-${Date.now()}`;
+      const newConversation: ConversationMeta = {
+        id: newId,
+        title: null,
+        updatedAt: new Date(),
+      };
+      setConversations((prev) => [newConversation, ...prev]);
       setSelectedSessionId(newId);
+      setInitialMessages([]);
       setTimeout(() => chatPanelRef.current?.focusInput(), 0);
       return;
     }
     
-    authClient.getSession().then(async (result) => {
-      if (result.data?.user?.id) {
-        // TODO: Replace with actual API call
-        // const id = await createChatSession(result.data.user.id);
-        // setSelectedSessionId(id);
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedSessionId(data.id);
+        setInitialMessages([]);
+        await fetchSessions();
         setTimeout(() => chatPanelRef.current?.focusInput(), 0);
       }
-    });
+    } catch (error) {
+      console.error("Failed to create conversation:", error);
+    }
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/sessions?id=${encodeURIComponent(sessionId)}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const messages = data.messages.map((msg: any) => ({
+          id: msg.id,
+          role: msg.role,
+          parts: msg.parts,
+          createdAt: new Date(msg.createdAt),
+        }));
+        setInitialMessages(messages);
+        setSelectedSessionId(sessionId);
+      } else {
+        setInitialMessages([]);
+        setSelectedSessionId(sessionId);
+      }
+    } catch (error) {
+      console.error("Failed to load session:", error);
+      setInitialMessages([]);
+      setSelectedSessionId(sessionId);
+    }
   };
 
   const handleInsightPromptClick = (prompt: string) => {
@@ -259,16 +324,19 @@ export function App() {
       <div className="flex md:hidden flex-1 flex-col overflow-hidden">
         {activeTab === "chat" && (
           <>
-            <div className="overflow-x-auto scrollbar-hide flex-shrink-0 border-b bg-muted/30">
+            {/* <div className="overflow-x-auto scrollbar-hide flex-shrink-0 border-b bg-muted/30">
               <InsightCards insights={insights} onPromptClick={handleInsightPromptClick} />
-            </div>
+            </div> */}
             <div className="flex flex-1 flex-col overflow-hidden">
             {selectedSessionId ? (
               <ChatPanel
+                key={selectedSessionId}
                 ref={chatPanelRef}
                 sessionId={selectedSessionId}
                 selectedDate={selectedDate}
                 timezone={timezone}
+                initialMessages={initialMessages}
+                onMessageSent={fetchSessions}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6 text-center">
@@ -300,7 +368,7 @@ export function App() {
             <ConversationList
               conversations={conversations}
               selectedId={selectedSessionId}
-              onSelect={setSelectedSessionId}
+              onSelect={handleSelectSession}
               onCreateNew={handleCreateConversation}
             />
           </div>
@@ -314,23 +382,26 @@ export function App() {
           <ConversationList
             conversations={conversations}
             selectedId={selectedSessionId}
-            onSelect={setSelectedSessionId}
+            onSelect={handleSelectSession}
             onCreateNew={handleCreateConversation}
           />
         </div>
 
         {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="overflow-x-auto scrollbar-hide flex-shrink-0 border-b bg-muted/30">
+          {/* <div className="overflow-x-auto scrollbar-hide flex-shrink-0 border-b bg-muted/30">
             <InsightCards insights={insights} onPromptClick={handleInsightPromptClick} />
-          </div>
+          </div> */}
           <div className="flex flex-1 flex-col overflow-hidden">
             {selectedSessionId ? (
               <ChatPanel
+                key={selectedSessionId}
                 ref={chatPanelRef}
                 sessionId={selectedSessionId}
                 selectedDate={selectedDate}
                 timezone={timezone}
+                initialMessages={initialMessages}
+                onMessageSent={fetchSessions}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center">

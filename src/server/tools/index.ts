@@ -1,12 +1,10 @@
-import { createGetCalendarEventsTool } from "./getCalendarEvents";
-import { createSummarizeCalendarTool } from "./summarizeCalendar";
-import { createAnalyzeAvailabilityTool } from "./analyzeAvailability";
+import { createCalendarListEventsTool } from "./getCalendarEvents";
+import { createCalendarFreeBusyTool } from "./freeBusy";
 
 export function createServerTools(userId: string) {
   return [
-    createGetCalendarEventsTool(userId),
-    createSummarizeCalendarTool(),
-    createAnalyzeAvailabilityTool(),
+    createCalendarListEventsTool(userId),
+    createCalendarFreeBusyTool(userId),
   ];
 }
 

@@ -1,22 +1,6 @@
-import type { CalendarEvent } from "@/core/calendar/types";
+import type { CalendarEvent, CalendarEventAttendee } from "@/core/calendar/types";
+import type { GoogleCalendarEvent } from "./calendarClient";
 
-type GoogleCalendarEvent = {
-  id: string;
-  summary?: string;
-  start: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  end: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  status?: string;
-};
-
-// Transform Google Calendar API response to domain model
 export function normalizeGoogleEvents(
   googleEvents: GoogleCalendarEvent[]
 ): CalendarEvent[] {
@@ -46,6 +30,19 @@ export function normalizeGoogleEvents(
         throw new Error("Event missing end time");
       }
 
+      const attendees: CalendarEventAttendee[] | undefined = event.attendees
+        ? event.attendees.map((attendee) => ({
+            email: attendee.email,
+            displayName: attendee.displayName,
+            responseStatus: attendee.responseStatus as
+              | "needsAction"
+              | "declined"
+              | "tentative"
+              | "accepted"
+              | undefined,
+          }))
+        : undefined;
+
       return {
         id: event.id,
         title: event.summary || "(No title)",
@@ -53,6 +50,11 @@ export function normalizeGoogleEvents(
         endTime,
         timezone,
         allDay: isAllDay,
+        attendees,
+        location: event.location,
+        description: event.description,
+        colorId: event.colorId,
+        calendarId: "primary",
       };
     });
 }

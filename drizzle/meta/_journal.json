@@ -8,6 +8,13 @@
       "when": 1766526288107,
       "tag": "0000_worried_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766527000000,
+      "tag": "0001_update_chat_message",
+      "breakpoints": true
     }
   ]
 }

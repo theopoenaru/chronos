@@ -40,19 +40,33 @@ export function ConversationList({
           </Empty>
         ) : (
           <div className="space-y-1">
-            {conversations.map((conv) => (
-              <Button
-                key={conv.id}
-                variant={selectedId === conv.id ? "secondary" : "ghost"}
-                className="w-full justify-start rounded-md text-sm"
-                onClick={() => onSelect(conv.id)}
-              >
-                <MessageSquare className="mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  {conv.title || "Untitled conversation"}
-                </span>
-              </Button>
-            ))}
+            {conversations.map((conv) => {
+              const formattedDate = new Intl.DateTimeFormat('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              }).format(conv.updatedAt);
+
+              return (
+                <Button
+                  key={conv.id}
+                  variant={selectedId === conv.id ? "secondary" : "ghost"}
+                  className="w-full justify-start rounded-md text-sm h-auto py-2"
+                  onClick={() => onSelect(conv.id)}
+                >
+                  <MessageSquare className="mr-2 h-4 w-4 flex-shrink-0 self-start mt-0.5" />
+                  <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                    <span className="truncate w-full text-left font-medium">
+                      {conv.title || "Untitled conversation"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formattedDate}
+                    </span>
+                  </div>
+                </Button>
+              );
+            })}
           </div>
         )}
       </div>

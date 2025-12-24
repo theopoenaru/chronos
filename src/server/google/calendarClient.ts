@@ -4,7 +4,7 @@ import { db } from "../db";
 import { account } from "../../../auth-schema";
 import { eq, and } from "drizzle-orm";
 
-type GoogleCalendarEvent = {
+export type GoogleCalendarEvent = {
   id: string;
   summary?: string;
   start: {
@@ -18,14 +18,31 @@ type GoogleCalendarEvent = {
     timeZone?: string;
   };
   status?: string;
+  attendees?: Array<{
+    email: string;
+    displayName?: string;
+    responseStatus?: string;
+  }>;
+  location?: string;
+  description?: string;
+  colorId?: string;
+  organizer?: {
+    email: string;
+  };
 };
 
-export async function fetchCalendarEvents(
-  userId: string,
-  timeMin: Date,
-  timeMax: Date,
-): Promise<GoogleCalendarEvent[]> {
-  // Get OAuth token from account table
+type GoogleFreeBusyResponse = {
+  calendars: {
+    [calendarId: string]: {
+      busy: Array<{
+        start: string;
+        end: string;
+      }>;
+    };
+  };
+};
+
+async function getValidAccessToken(userId: string): Promise<string> {
   const accounts = await db
     .select()
     .from(account)
@@ -40,13 +57,11 @@ export async function fetchCalendarEvents(
   const expiresAt = accounts[0].accessTokenExpiresAt;
   const refreshToken = accounts[0].refreshToken;
 
-  // Check if token expired or expiring soon (< 5 minutes)
   const needsRefresh =
     !expiresAt ||
     expiresAt < new Date(Date.now() + 5 * 60 * 1000);
 
   if (needsRefresh && refreshToken) {
-    // Refresh token via Google OAuth endpoint
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -77,7 +92,6 @@ export async function fetchCalendarEvents(
       Date.now() + (data.expires_in || 3600) * 1000
     );
 
-    // Update account table with new token
     await db
       .update(account)
       .set({
@@ -88,18 +102,34 @@ export async function fetchCalendarEvents(
       .where(eq(account.id, accounts[0].id));
   }
 
-  // Call Google Calendar API
+  return accessToken;
+}
+
+export async function fetchCalendarEvents(
+  userId: string,
+  timeMin: Date,
+  timeMax: Date,
+  options?: { calendarId?: string; query?: string; maxResults?: number }
+): Promise<GoogleCalendarEvent[]> {
+  const accessToken = await getValidAccessToken(userId);
+
   const timeMinISO = timeMin.toISOString();
   const timeMaxISO = timeMax.toISOString();
 
+  const calendarId = options?.calendarId || "primary";
   const url = new URL(
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+    `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`
   );
   url.searchParams.set("timeMin", timeMinISO);
   url.searchParams.set("timeMax", timeMaxISO);
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
-  url.searchParams.set("maxResults", "250");
+  url.searchParams.set("maxResults", (options?.maxResults ?? 250).toString());
+  url.searchParams.set("fields", "items(id,summary,start,end,status,attendees,location,description,colorId,organizer)");
+  
+  if (options?.query) {
+    url.searchParams.set("q", options.query);
+  }
 
   const apiResponse = await fetch(url.toString(), {
     headers: {
@@ -109,7 +139,9 @@ export async function fetchCalendarEvents(
 
   if (!apiResponse.ok) {
     if (apiResponse.status === 401) {
-      throw new Error("Google OAuth token invalid");
+      const error = new Error("Google OAuth token invalid");
+      (error as any).code = "OAUTH_TOKEN_INVALID";
+      throw error;
     }
     throw new Error(
       `Google Calendar API error: ${apiResponse.status} ${apiResponse.statusText}`
@@ -118,5 +150,47 @@ export async function fetchCalendarEvents(
 
   const data = await apiResponse.json();
   return data.items || [];
+}
+
+export async function fetchFreeBusy(
+  userId: string,
+  calendarIds: string[],
+  timeMin: Date,
+  timeMax: Date,
+): Promise<GoogleFreeBusyResponse> {
+  const accessToken = await getValidAccessToken(userId);
+
+  const timeMinISO = timeMin.toISOString();
+  const timeMaxISO = timeMax.toISOString();
+
+  const apiResponse = await fetch(
+    "https://www.googleapis.com/calendar/v3/freeBusy",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        timeMin: timeMinISO,
+        timeMax: timeMaxISO,
+        items: calendarIds.map((id) => ({ id })),
+      }),
+    }
+  );
+
+  if (!apiResponse.ok) {
+    if (apiResponse.status === 401) {
+      const error = new Error("Google OAuth token invalid");
+      (error as any).code = "OAUTH_TOKEN_INVALID";
+      throw error;
+    }
+    throw new Error(
+      `Google Calendar API error: ${apiResponse.status} ${apiResponse.statusText}`
+    );
+  }
+
+  const data = await apiResponse.json();
+  return data;
 }
 
