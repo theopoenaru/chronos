@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef } from "react";
+import { useRef, useState, useImperativeHandle, forwardRef } from "react";
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
 import {
   ChatContainerRoot,
@@ -66,25 +66,12 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
       setInput: (value: string) => internalRef.current?.setInput(value),
     }));
 
-    const selectedDateYmd = useMemo(() => {
-      return new Intl.DateTimeFormat("en-CA", {
-        timeZone: timezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(selectedDate);
-    }, [selectedDate, timezone]);
-
-    const selectedDateYmdRef = useRef(selectedDateYmd);
-    const timezoneRef = useRef(timezone);
-
-    useEffect(() => {
-      selectedDateYmdRef.current = selectedDateYmd;
-    }, [selectedDateYmd]);
-
-    useEffect(() => {
-      timezoneRef.current = timezone;
-    }, [timezone]);
+    const selectedDateYmd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(selectedDate);
 
     const { messages, sendMessage, isLoading } = useChat({
       initialMessages,
@@ -92,8 +79,8 @@ export const ChatPanel = forwardRef<ChatPanelRef, ChatPanelProps>(
         `/api/chat?sessionId=${sessionId}`,
         () => ({
           body: {
-            selectedDate: selectedDateYmdRef.current,
-            timezone: timezoneRef.current,
+            selectedDate: selectedDateYmd,
+            timezone: timezone,
           },
         }),
       ),

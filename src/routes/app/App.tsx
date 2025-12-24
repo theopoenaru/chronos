@@ -80,8 +80,28 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    setAvatarLoadFailed(false);
-  }, [session?.user?.image]);
+    if (conversations.length === 0 && !selectedSessionId && process.env.NODE_ENV !== "development") {
+      const createNewSession = async () => {
+        try {
+          const response = await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setSelectedSessionId(data.id);
+            setInitialMessages([]);
+            await fetchSessions();
+            setTimeout(() => chatPanelRef.current?.focusInput(), 0);
+          }
+        } catch (error) {
+          console.error("Failed to create conversation:", error);
+        }
+      };
+      createNewSession();
+    }
+  }, [conversations.length, selectedSessionId]);
 
   useEffect(() => {
     const fetchEvents = async () => {
