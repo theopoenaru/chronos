@@ -42,7 +42,20 @@ export const Route = createFileRoute("/api/calendar")({
               { status: 401, headers: { "Content-Type": "application/json" } }
             );
           }
-          throw error;
+          if (error.code === "CALENDAR_ACCESS_FORBIDDEN") {
+            return new Response(
+              JSON.stringify({ 
+                error: "CALENDAR_ACCESS_FORBIDDEN", 
+                message: "Google Calendar API access forbidden. Please check your API permissions and scopes." 
+              }),
+              { status: 403, headers: { "Content-Type": "application/json" } }
+            );
+          }
+          console.error("Calendar API error:", error);
+          return new Response(
+            JSON.stringify({ error: "CALENDAR_API_ERROR", message: error.message || "Failed to fetch calendar events" }),
+            { status: error.status || 500, headers: { "Content-Type": "application/json" } }
+          );
         }
       },
     },

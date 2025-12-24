@@ -143,6 +143,12 @@ export async function fetchCalendarEvents(
       (error as any).code = "OAUTH_TOKEN_INVALID";
       throw error;
     }
+    if (apiResponse.status === 403) {
+      const error = new Error("Google Calendar API access forbidden");
+      (error as any).code = "CALENDAR_ACCESS_FORBIDDEN";
+      (error as any).status = 403;
+      throw error;
+    }
     throw new Error(
       `Google Calendar API error: ${apiResponse.status} ${apiResponse.statusText}`
     );
@@ -183,6 +189,12 @@ export async function fetchFreeBusy(
     if (apiResponse.status === 401) {
       const error = new Error("Google OAuth token invalid");
       (error as any).code = "OAUTH_TOKEN_INVALID";
+      throw error;
+    }
+    if (apiResponse.status === 403) {
+      const error = new Error("Google Calendar API access forbidden");
+      (error as any).code = "CALENDAR_ACCESS_FORBIDDEN";
+      (error as any).status = 403;
       throw error;
     }
     throw new Error(
